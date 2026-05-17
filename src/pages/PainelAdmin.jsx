@@ -161,4 +161,114 @@ export default function PainelAdmin({ user, onSair }) {
                     <button onClick={() => rejeitarSocio(s.id)} style={{ background:`${T.err}18`, color:T.err, border:`1px solid ${T.err}44`, borderRadius:10, padding:"9px", fontWeight:900, fontSize:13, cursor:"pointer" }}>
                       ✗ Rejeitar
                     </button>
-                    <button onClick={() => aprovarSocio(s.id)} style={{ background:`${T.verdeClaro}22`, color:T.verdeClaro, border:`1px solid ${T.verdeClaro}55`, borderRadius:10, padding:"9px", fontWeight:900
+                    <button onClick={() => aprovarSocio(s.id)} style={{ background:`${T.verdeClaro}22`, color:T.verdeClaro, border:`1px solid ${T.verdeClaro}55`, borderRadius:10, padding:"9px", fontWeight:900, fontSize:13, cursor:"pointer" }}>
+                      ✓ Aprovar
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── AGENTES ── */}
+        {aba === "agentes" && !carregando && (
+          <div>
+            <h2 style={{ fontFamily:T.fontDisplay, fontSize:22, color:T.terra, marginBottom:18 }}>Gestão de Agentes</h2>
+            <FormNovoAgente onCriar={criarAgente} />
+            {agentes.map(a => (
+              <div key={a.id} style={{ background:T.branco, borderRadius:14, padding:16, marginBottom:10, boxShadow:`0 2px 12px rgba(44,24,16,.07)`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div>
+                  <div style={{ fontWeight:700, color:T.terra, fontSize:15 }}>{a.nome_completo}</div>
+                  <div style={{ fontSize:12, color:T.muted }}>{a.email}</div>
+                  <div style={{ fontSize:12, color:T.muted }}>{a.zona_atribuida || "Sem zona definida"}</div>
+                </div>
+                <button onClick={() => toggleAgente(a.id, a.ativo)} style={{ background: a.ativo ? `${T.verdeClaro}22` : `${T.err}18`, color: a.ativo ? T.verdeClaro : T.err, border:`1px solid ${a.ativo ? T.verdeClaro : T.err}44`, borderRadius:10, padding:"8px 12px", fontWeight:900, fontSize:12, cursor:"pointer" }}>
+                  {a.ativo ? "✓ Activo" : "✗ Inactivo"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── MORANÇAS ── */}
+        {aba === "morancas" && !carregando && (
+          <div>
+            <h2 style={{ fontFamily:T.fontDisplay, fontSize:22, color:T.terra, marginBottom:18 }}>Moranças Registadas</h2>
+            {morancas.length === 0 && <div style={{ textAlign:"center", color:T.muted, padding:40 }}>Nenhuma morança registada ainda.</div>}
+            {morancas.map(m => (
+              <div key={m.id} style={{ background:T.branco, borderRadius:14, padding:16, marginBottom:10, boxShadow:`0 2px 12px rgba(44,24,16,.07)` }}>
+                <div style={{ fontFamily:T.fontDisplay, fontWeight:700, color:T.terra, fontSize:15, marginBottom:4 }}>{m.chefe_familia}</div>
+                <div style={{ fontSize:12, color:T.muted, marginBottom:8 }}>{m.secao} · {m.setor} · {m.regiao}</div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6 }}>
+                  {[
+                    { label:"Homens",   valor:m.total_homens },
+                    { label:"Mulheres", valor:m.total_mulheres },
+                    { label:"Crianças", valor:m.total_criancas },
+                    { label:"Total",    valor:m.numero_residentes },
+                  ].map(i => (
+                    <div key={i.label} style={{ background:T.creme, borderRadius:8, padding:"8px 6px", textAlign:"center" }}>
+                      <div style={{ fontSize:16, fontWeight:900, color:T.terra }}>{i.valor || 0}</div>
+                      <div style={{ fontSize:10, color:T.muted }}>{i.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* Formulário para criar novo agente */
+function FormNovoAgente({ onCriar }) {
+  const [aberto, setAberto] = useState(false);
+  const [dados, setDados]   = useState({ nome_completo:"", email:"", password_hash:"", telefone:"", zona_atribuida:"" });
+  const [salvando, setSalvando] = useState(false);
+
+  const T = {
+    terra:"#2C1810", ouro:"#C8922A", ouroVivo:"#E8A830",
+    areia:"#D4A574", creme:"#FBF4E8", branco:"#FFFCF5",
+    muted:"#8A7060", verdeClaro:"#4A7C24",
+  };
+
+  const salvar = async () => {
+    if (!dados.nome_completo || !dados.email || !dados.password_hash) return;
+    setSalvando(true);
+    await onCriar(dados);
+    setDados({ nome_completo:"", email:"", password_hash:"", telefone:"", zona_atribuida:"" });
+    setAberto(false);
+    setSalvando(false);
+  };
+
+  return (
+    <div style={{ marginBottom:16 }}>
+      <button onClick={() => setAberto(!aberto)} style={{ width:"100%", background:`linear-gradient(135deg,${T.ouro},${T.ouroVivo})`, color:T.terra, border:"none", borderRadius:12, padding:"13px", fontWeight:900, fontSize:14, cursor:"pointer", marginBottom: aberto ? 12 : 0 }}>
+        {aberto ? "✕ Cancelar" : "+ Criar Novo Agente"}
+      </button>
+      {aberto && (
+        <div style={{ background:T.branco, borderRadius:14, padding:16, border:`1px solid ${T.areia}` }}>
+          {[
+            { label:"Nome Completo", campo:"nome_completo", tipo:"text",     placeholder:"Nome do agente" },
+            { label:"Email",         campo:"email",         tipo:"email",    placeholder:"email@exemplo.com" },
+            { label:"Senha",         campo:"password_hash", tipo:"password", placeholder:"Senha de acesso" },
+            { label:"Telefone",      campo:"telefone",      tipo:"tel",      placeholder:"+245 9XX XXX XXX" },
+            { label:"Zona Atribuída",campo:"zona_atribuida",tipo:"text",     placeholder:"Ex: Tambató Norte" },
+          ].map(f => (
+            <div key={f.campo} style={{ marginBottom:12 }}>
+              <label style={{ display:"block", fontSize:11, fontWeight:800, color:T.muted, letterSpacing:1, textTransform:"uppercase", marginBottom:6 }}>{f.label}</label>
+              <input type={f.tipo} placeholder={f.placeholder} value={dados[f.campo]}
+                onChange={e => setDados(p => ({ ...p, [f.campo]: e.target.value }))}
+                style={{ width:"100%", padding:"11px 14px", borderRadius:10, border:`1.5px solid ${T.areia}`, background:T.creme, fontSize:14, color:T.terra, boxSizing:"border-box" }} />
+            </div>
+          ))}
+          <button onClick={salvar} disabled={salvando} style={{ width:"100%", background:T.verdeClaro, color:T.branco, border:"none", borderRadius:10, padding:"12px", fontWeight:900, fontSize:14, cursor:"pointer" }}>
+            {salvando ? "A criar..." : "✓ Criar Agente"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
