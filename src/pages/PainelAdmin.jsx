@@ -56,40 +56,64 @@ export default function PainelAdmin({ user, onSair }) {
     carregarTudo();
   }
 
-  async function criarAgente(dados) {
-    // Passo 1 — Criar no Authentication do Supabase
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: dados.email,
-      password: dados.password_hash,
-      options: { data: { nome_completo: dados.nome_completo } }
-    });
+  async function criarAgente(dados, setMensagem, setSalvando) {
+    try {
+      // Passo 1 — Criar no Authentication
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: dados.email.trim(),
+        password: dados.password_hash.trim(),
+      });
 
-    if (authError) {
-      alert("Erro ao criar agente: " + authError.message);
-      return;
+      if (authError) {
+        setMensagem("❌ Erro: " + authError.message);
+        setSalvando(false);
+        return;
+      }
+
+      const uid = authData?.user?.id;
+      if (!uid) {
+        setMensagem("❌ Erro ao obter ID do utilizador.");
+        setSalvando(false);
+        return;
+      }
+
+      // Passo 2 — Confirmar email automaticamente
+      await supabase.rpc("confirmar_email", { user_id: uid });
+
+      // Passo 3 — Verificar se já existe na tabela users
+      const { data: existe } = await supabase
+        .from("users")
+        .select("id")
+        .eq("email", dados.email.trim())
+        .single();
+
+      if (existe) {
+        // Actualizar o ID para o do Authentication
+        await supabase
+          .from("users")
+          .update({ id: uid, password_hash: dados.password_hash })
+          .eq("email", dados.email.trim());
+      } else {
+        // Inserir novo
+        await supabase.from("users").insert([{
+          id:             uid,
+          nome_completo:  dados.nome_completo,
+          email:          dados.email.trim(),
+          password_hash:  dados.password_hash,
+          telefone:       dados.telefone,
+          zona_atribuida: dados.zona_atribuida,
+          role:           "agente",
+          ativo:          true,
+        }]);
+      }
+
+      setMensagem("✅ Agente criado com sucesso! Pode fazer login em qualquer dispositivo.");
+      carregarTudo();
+
+    } catch (e) {
+      setMensagem("❌ Erro inesperado: " + e.message);
     }
-
-    // Passo 2 — Confirmar email automaticamente via SQL
-    await supabase.rpc("confirmar_email", { user_id: authData.user.id });
-
-    // Passo 3 — Guardar na tabela users com o ID do Authentication
-    const { error: dbError } = await supabase.from("users").insert([{
-      id:             authData.user.id,
-      nome_completo:  dados.nome_completo,
-      email:          dados.email,
-      password_hash:  dados.password_hash,
-      telefone:       dados.telefone,
-      zona_atribuida: dados.zona_atribuida,
-      role:           "agente",
-      ativo:          true,
-    }]);
-
-    if (dbError) {
-      alert("Erro ao guardar agente: " + dbError.message);
-      return;
-    }
-
-    carregarTudo();
+    setSalvando(false);
   }
 
   async function toggleAgente(id, ativo) {
@@ -262,35 +286,34 @@ function FormNovoAgente({ onCriar }) {
 
   const salvar = async () => {
     if (!dados.nome_completo || !dados.email || !dados.password_hash) {
-      setMensagem("Preenche o nome, email e senha!");
+      setMensagem("❌ Preenche o nome, email e senha!");
+      return;
+    }
+    if (dados.password_hash.length < 6) {
+      setMensagem("❌ A senha deve ter mínimo 6 caracteres!");
       return;
     }
     setSalvando(true);
-    setMensagem("");
-    await onCriar(dados);
+    setMensagem("⏳ A criar agente...");
+    await onCriar(dados, setMensagem, setSalvando);
     setDados({ nome_completo:"", email:"", password_hash:"", telefone:"", zona_atribuida:"" });
-    setMensagem("✓ Agente criado com sucesso!");
     setAberto(false);
-    setSalvando(false);
   };
 
   return (
     <div style={{ marginBottom:16 }}>
-      <button onClick={() => setAberto(!aberto)} style={{ width:"100%", background:`linear-gradient(135deg,${T.ouro},${T.ouroVivo})`, color:T.terra, border:"none", borderRadius:12, padding:"13px", fontWeight:900, fontSize:14, cursor:"pointer", marginBottom: aberto ? 12 : 0 }}>
+      <button onClick={() => { setAberto(!aberto); setMensagem(""); }} style={{ width:"100%", background:`linear-gradient(135deg,${T.ouro},${T.ouroVivo})`, color:T.terra, border:"none", borderRadius:12, padding:"13px", fontWeight:900, fontSize:14, cursor:"pointer", marginBottom: aberto ? 12 : 0 }}>
         {aberto ? "✕ Cancelar" : "+ Criar Novo Agente"}
       </button>
 
       {mensagem && (
-        <div style={{ background:`${T.verdeClaro}18`, color:T.verdeClaro, border:`1px solid ${T.verdeClaro}44`, borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, fontWeight:700 }}>
+        <div style={{ background: mensagem.includes("✅") ? `${T.verdeClaro}18` : `${T.err}18`, color: mensagem.includes("✅") ? T.verdeClaro : T.err, border:`1px solid ${mensagem.includes("✅") ? T.verdeClaro : T.err}44`, borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, fontWeight:700 }}>
           {mensagem}
         </div>
       )}
 
       {aberto && (
         <div style={{ background:T.branco, borderRadius:14, padding:16, border:`1px solid ${T.areia}` }}>
-          <div style={{ fontSize:13, color:T.muted, marginBottom:14, lineHeight:1.5 }}>
-            ℹ️ O agente receberá um email de confirmação ou poderá fazer login directamente com as credenciais abaixo.
-          </div>
           {[
             { label:"Nome Completo",  campo:"nome_completo",  tipo:"text",     placeholder:"Nome do agente" },
             { label:"Email",          campo:"email",          tipo:"email",    placeholder:"email@exemplo.com" },
@@ -306,7 +329,7 @@ function FormNovoAgente({ onCriar }) {
             </div>
           ))}
           <button onClick={salvar} disabled={salvando} style={{ width:"100%", background:T.verdeClaro, color:T.branco, border:"none", borderRadius:10, padding:"12px", fontWeight:900, fontSize:14, cursor:"pointer" }}>
-            {salvando ? "A criar agente..." : "✓ Criar Agente"}
+            {salvando ? "⏳ A criar agente..." : "✓ Criar Agente"}
           </button>
         </div>
       )}
