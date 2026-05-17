@@ -18,13 +18,12 @@ export default function PainelAdmin({ user, onSair }) {
   const [morancas, setMorancas] = useState([]);
   const [carregando, setCarregando] = useState(false);
 
-  // Estatísticas
   const stats = {
-    totalSocios:   socios.length,
-    pendentes:     socios.filter(s => s.status === "pendente").length,
-    aprovados:     socios.filter(s => s.status === "aprovado").length,
-    totalAgentes:  agentes.length,
-    totalMorancas: morancas.length,
+    totalSocios:     socios.length,
+    pendentes:       socios.filter(s => s.status === "pendente").length,
+    aprovados:       socios.filter(s => s.status === "aprovado").length,
+    totalAgentes:    agentes.length,
+    totalMorancas:   morancas.length,
     totalResidentes: morancas.reduce((a, m) => a + (m.numero_residentes || 0), 0),
   };
 
@@ -58,7 +57,38 @@ export default function PainelAdmin({ user, onSair }) {
   }
 
   async function criarAgente(dados) {
-    await supabase.from("users").insert([{ ...dados, role: "agente", ativo: true }]);
+    // Passo 1 — Criar no Authentication do Supabase
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: dados.email,
+      password: dados.password_hash,
+      options: { data: { nome_completo: dados.nome_completo } }
+    });
+
+    if (authError) {
+      alert("Erro ao criar agente: " + authError.message);
+      return;
+    }
+
+    // Passo 2 — Confirmar email automaticamente via SQL
+    await supabase.rpc("confirmar_email", { user_id: authData.user.id });
+
+    // Passo 3 — Guardar na tabela users com o ID do Authentication
+    const { error: dbError } = await supabase.from("users").insert([{
+      id:             authData.user.id,
+      nome_completo:  dados.nome_completo,
+      email:          dados.email,
+      password_hash:  dados.password_hash,
+      telefone:       dados.telefone,
+      zona_atribuida: dados.zona_atribuida,
+      role:           "agente",
+      ativo:          true,
+    }]);
+
+    if (dbError) {
+      alert("Erro ao guardar agente: " + dbError.message);
+      return;
+    }
+
     carregarTudo();
   }
 
@@ -122,8 +152,6 @@ export default function PainelAdmin({ user, onSair }) {
                 </div>
               ))}
             </div>
-
-            {/* Alertas de pendentes */}
             {stats.pendentes > 0 && (
               <div style={{ background:"#E67E2218", border:"1px solid #E67E2255", borderRadius:14, padding:16 }}>
                 <div style={{ fontWeight:800, color:"#E67E22", marginBottom:6 }}>⏳ {stats.pendentes} pedido(s) pendente(s)</div>
@@ -158,12 +186,8 @@ export default function PainelAdmin({ user, onSair }) {
                 </div>
                 {s.status === "pendente" && (
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                    <button onClick={() => rejeitarSocio(s.id)} style={{ background:`${T.err}18`, color:T.err, border:`1px solid ${T.err}44`, borderRadius:10, padding:"9px", fontWeight:900, fontSize:13, cursor:"pointer" }}>
-                      ✗ Rejeitar
-                    </button>
-                    <button onClick={() => aprovarSocio(s.id)} style={{ background:`${T.verdeClaro}22`, color:T.verdeClaro, border:`1px solid ${T.verdeClaro}55`, borderRadius:10, padding:"9px", fontWeight:900, fontSize:13, cursor:"pointer" }}>
-                      ✓ Aprovar
-                    </button>
+                    <button onClick={() => rejeitarSocio(s.id)} style={{ background:`${T.err}18`, color:T.err, border:`1px solid ${T.err}44`, borderRadius:10, padding:"9px", fontWeight:900, fontSize:13, cursor:"pointer" }}>✗ Rejeitar</button>
+                    <button onClick={() => aprovarSocio(s.id)} style={{ background:`${T.verdeClaro}22`, color:T.verdeClaro, border:`1px solid ${T.verdeClaro}55`, borderRadius:10, padding:"9px", fontWeight:900, fontSize:13, cursor:"pointer" }}>✓ Aprovar</button>
                   </div>
                 )}
               </div>
@@ -176,6 +200,7 @@ export default function PainelAdmin({ user, onSair }) {
           <div>
             <h2 style={{ fontFamily:T.fontDisplay, fontSize:22, color:T.terra, marginBottom:18 }}>Gestão de Agentes</h2>
             <FormNovoAgente onCriar={criarAgente} />
+            {agentes.length === 0 && <div style={{ textAlign:"center", color:T.muted, padding:20 }}>Nenhum agente criado ainda.</div>}
             {agentes.map(a => (
               <div key={a.id} style={{ background:T.branco, borderRadius:14, padding:16, marginBottom:10, boxShadow:`0 2px 12px rgba(44,24,16,.07)`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                 <div>
@@ -224,21 +249,27 @@ export default function PainelAdmin({ user, onSair }) {
 
 /* Formulário para criar novo agente */
 function FormNovoAgente({ onCriar }) {
-  const [aberto, setAberto] = useState(false);
-  const [dados, setDados]   = useState({ nome_completo:"", email:"", password_hash:"", telefone:"", zona_atribuida:"" });
+  const [aberto, setAberto]     = useState(false);
+  const [dados, setDados]       = useState({ nome_completo:"", email:"", password_hash:"", telefone:"", zona_atribuida:"" });
   const [salvando, setSalvando] = useState(false);
+  const [mensagem, setMensagem] = useState("");
 
   const T = {
     terra:"#2C1810", ouro:"#C8922A", ouroVivo:"#E8A830",
     areia:"#D4A574", creme:"#FBF4E8", branco:"#FFFCF5",
-    muted:"#8A7060", verdeClaro:"#4A7C24",
+    muted:"#8A7060", verdeClaro:"#4A7C24", err:"#C0392B",
   };
 
   const salvar = async () => {
-    if (!dados.nome_completo || !dados.email || !dados.password_hash) return;
+    if (!dados.nome_completo || !dados.email || !dados.password_hash) {
+      setMensagem("Preenche o nome, email e senha!");
+      return;
+    }
     setSalvando(true);
+    setMensagem("");
     await onCriar(dados);
     setDados({ nome_completo:"", email:"", password_hash:"", telefone:"", zona_atribuida:"" });
+    setMensagem("✓ Agente criado com sucesso!");
     setAberto(false);
     setSalvando(false);
   };
@@ -248,14 +279,24 @@ function FormNovoAgente({ onCriar }) {
       <button onClick={() => setAberto(!aberto)} style={{ width:"100%", background:`linear-gradient(135deg,${T.ouro},${T.ouroVivo})`, color:T.terra, border:"none", borderRadius:12, padding:"13px", fontWeight:900, fontSize:14, cursor:"pointer", marginBottom: aberto ? 12 : 0 }}>
         {aberto ? "✕ Cancelar" : "+ Criar Novo Agente"}
       </button>
+
+      {mensagem && (
+        <div style={{ background:`${T.verdeClaro}18`, color:T.verdeClaro, border:`1px solid ${T.verdeClaro}44`, borderRadius:10, padding:"10px 14px", marginBottom:10, fontSize:13, fontWeight:700 }}>
+          {mensagem}
+        </div>
+      )}
+
       {aberto && (
         <div style={{ background:T.branco, borderRadius:14, padding:16, border:`1px solid ${T.areia}` }}>
+          <div style={{ fontSize:13, color:T.muted, marginBottom:14, lineHeight:1.5 }}>
+            ℹ️ O agente receberá um email de confirmação ou poderá fazer login directamente com as credenciais abaixo.
+          </div>
           {[
-            { label:"Nome Completo", campo:"nome_completo", tipo:"text",     placeholder:"Nome do agente" },
-            { label:"Email",         campo:"email",         tipo:"email",    placeholder:"email@exemplo.com" },
-            { label:"Senha",         campo:"password_hash", tipo:"password", placeholder:"Senha de acesso" },
-            { label:"Telefone",      campo:"telefone",      tipo:"tel",      placeholder:"+245 9XX XXX XXX" },
-            { label:"Zona Atribuída",campo:"zona_atribuida",tipo:"text",     placeholder:"Ex: Tambató Norte" },
+            { label:"Nome Completo",  campo:"nome_completo",  tipo:"text",     placeholder:"Nome do agente" },
+            { label:"Email",          campo:"email",          tipo:"email",    placeholder:"email@exemplo.com" },
+            { label:"Senha",          campo:"password_hash",  tipo:"password", placeholder:"Mínimo 6 caracteres" },
+            { label:"Telefone",       campo:"telefone",       tipo:"tel",      placeholder:"+245 9XX XXX XXX" },
+            { label:"Zona Atribuída", campo:"zona_atribuida", tipo:"text",     placeholder:"Ex: Tambató Norte" },
           ].map(f => (
             <div key={f.campo} style={{ marginBottom:12 }}>
               <label style={{ display:"block", fontSize:11, fontWeight:800, color:T.muted, letterSpacing:1, textTransform:"uppercase", marginBottom:6 }}>{f.label}</label>
@@ -265,7 +306,7 @@ function FormNovoAgente({ onCriar }) {
             </div>
           ))}
           <button onClick={salvar} disabled={salvando} style={{ width:"100%", background:T.verdeClaro, color:T.branco, border:"none", borderRadius:10, padding:"12px", fontWeight:900, fontSize:14, cursor:"pointer" }}>
-            {salvando ? "A criar..." : "✓ Criar Agente"}
+            {salvando ? "A criar agente..." : "✓ Criar Agente"}
           </button>
         </div>
       )}
