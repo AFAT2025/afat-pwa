@@ -58,7 +58,6 @@ export default function PainelAdmin({ user, onSair }) {
 
   async function criarAgente(dados, setMensagem, setSalvando) {
     try {
-      // Usar a Edge Function que criamos no Supabase
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token;
 
@@ -99,6 +98,13 @@ export default function PainelAdmin({ user, onSair }) {
 
   async function toggleAgente(id, ativo) {
     await supabase.from("users").update({ ativo: !ativo }).eq("id", id);
+    carregarTudo();
+  }
+
+  async function apagarAgente(id, email) {
+    const confirmar = window.confirm(`Tens a certeza que queres apagar o agente ${email}? Esta acção não pode ser desfeita!`);
+    if (!confirmar) return;
+    await supabase.from("users").delete().eq("id", id);
     carregarTudo();
   }
 
@@ -207,15 +213,25 @@ export default function PainelAdmin({ user, onSair }) {
             <FormNovoAgente onCriar={criarAgente} />
             {agentes.length === 0 && <div style={{ textAlign:"center", color:T.muted, padding:20 }}>Nenhum agente criado ainda.</div>}
             {agentes.map(a => (
-              <div key={a.id} style={{ background:T.branco, borderRadius:14, padding:16, marginBottom:10, boxShadow:`0 2px 12px rgba(44,24,16,.07)`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div>
-                  <div style={{ fontWeight:700, color:T.terra, fontSize:15 }}>{a.nome_completo}</div>
-                  <div style={{ fontSize:12, color:T.muted }}>{a.email}</div>
-                  <div style={{ fontSize:12, color:T.muted }}>{a.zona_atribuida || "Sem zona definida"}</div>
+              <div key={a.id} style={{ background:T.branco, borderRadius:14, padding:16, marginBottom:10, boxShadow:`0 2px 12px rgba(44,24,16,.07)` }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+                  <div>
+                    <div style={{ fontWeight:700, color:T.terra, fontSize:15 }}>{a.nome_completo}</div>
+                    <div style={{ fontSize:12, color:T.muted }}>{a.email}</div>
+                    <div style={{ fontSize:12, color:T.muted }}>{a.zona_atribuida || "Sem zona definida"}</div>
+                  </div>
+                  <span style={{ background: a.ativo ? `${T.verdeClaro}22` : `${T.err}18`, color: a.ativo ? T.verdeClaro : T.err, borderRadius:20, padding:"4px 10px", fontSize:11, fontWeight:900 }}>
+                    {a.ativo ? "✓ Activo" : "✗ Inactivo"}
+                  </span>
                 </div>
-                <button onClick={() => toggleAgente(a.id, a.ativo)} style={{ background: a.ativo ? `${T.verdeClaro}22` : `${T.err}18`, color: a.ativo ? T.verdeClaro : T.err, border:`1px solid ${a.ativo ? T.verdeClaro : T.err}44`, borderRadius:10, padding:"8px 12px", fontWeight:900, fontSize:12, cursor:"pointer" }}>
-                  {a.ativo ? "✓ Activo" : "✗ Inactivo"}
-                </button>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                  <button onClick={() => toggleAgente(a.id, a.ativo)} style={{ background: a.ativo ? `${T.err}18` : `${T.verdeClaro}22`, color: a.ativo ? T.err : T.verdeClaro, border:`1px solid ${a.ativo ? T.err : T.verdeClaro}44`, borderRadius:10, padding:"9px", fontWeight:900, fontSize:12, cursor:"pointer" }}>
+                    {a.ativo ? "⏸ Desactivar" : "▶ Activar"}
+                  </button>
+                  <button onClick={() => apagarAgente(a.id, a.email)} style={{ background:`${T.err}18`, color:T.err, border:`1px solid ${T.err}44`, borderRadius:10, padding:"9px", fontWeight:900, fontSize:12, cursor:"pointer" }}>
+                    🗑 Apagar
+                  </button>
+                </div>
               </div>
             ))}
           </div>
