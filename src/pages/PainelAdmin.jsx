@@ -58,60 +58,41 @@ export default function PainelAdmin({ user, onSair }) {
 
   async function criarAgente(dados, setMensagem, setSalvando) {
     try {
-      // Passo 1 — Criar no Authentication
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: dados.email.trim(),
-        password: dados.password_hash.trim(),
-      });
+      // Usar a Edge Function que criamos no Supabase
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
 
-      if (authError) {
-        setMensagem("❌ Erro: " + authError.message);
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/criar-agente`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            email:          dados.email.trim(),
+            password:       dados.password_hash.trim(),
+            nome_completo:  dados.nome_completo.trim(),
+            telefone:       dados.telefone.trim() || "",
+            zona_atribuida: dados.zona_atribuida.trim() || "",
+          }),
+        }
+      );
+
+      const resultado = await response.json();
+
+      if (!response.ok) {
+        setMensagem("❌ Erro: " + (resultado.error || JSON.stringify(resultado)));
         setSalvando(false);
         return;
       }
 
-      const uid = authData?.user?.id;
-      if (!uid) {
-        setMensagem("❌ Erro ao obter ID do utilizador.");
-        setSalvando(false);
-        return;
-      }
-
-      // Passo 2 — Confirmar email automaticamente
-      await supabase.rpc("confirmar_email", { user_id: uid });
-
-      // Passo 3 — Verificar se já existe na tabela users
-      const { data: existe } = await supabase
-        .from("users")
-        .select("id")
-        .eq("email", dados.email.trim())
-        .single();
-
-      if (existe) {
-        // Actualizar o ID para o do Authentication
-        await supabase
-          .from("users")
-          .update({ id: uid, password_hash: dados.password_hash })
-          .eq("email", dados.email.trim());
-      } else {
-        // Inserir novo
-        await supabase.from("users").insert([{
-          id:             uid,
-          nome_completo:  dados.nome_completo,
-          email:          dados.email.trim(),
-          password_hash:  dados.password_hash,
-          telefone:       dados.telefone,
-          zona_atribuida: dados.zona_atribuida,
-          role:           "agente",
-          ativo:          true,
-        }]);
-      }
-
-      setMensagem("✅ Agente criado com sucesso! Pode fazer login em qualquer dispositivo.");
+      setMensagem("✅ Agente criado! Pode fazer login em qualquer dispositivo.");
       carregarTudo();
 
     } catch (e) {
-      setMensagem("❌ Erro inesperado: " + e.message);
+      setMensagem("❌ Erro de ligação: " + e.message);
     }
     setSalvando(false);
   }
